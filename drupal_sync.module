@@ -1,0 +1,256 @@
+<?php
+
+/**
+ * @file drupal_sync.module
+ * Drupal Sync module
+ */
+module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.api');
+module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.xmlrpc');
+module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.entity');
+module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.queue');
+module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.forms');
+module_load_include('inc', 'drupal_sync', 'drupal_sync.admin');
+
+/**
+ * Implements hook_menu().
+ */
+function drupal_sync_menu() {
+  // This is the minimum information you can provide for a menu item.
+  $items = array();
+
+  $items['admin/config/drupal_sync'] = array(
+    'title' => 'Drupal Sync',
+    'description' => 'Adjust Drupal Sync options.',
+    'position' => 'right',
+    'weight' => -5,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer site configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+  $items['admin/config/drupal_sync/settings'] = array(
+    'title' => 'Drupal Sync settings',
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('administer drupal sync settings'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('drupal_sync_admin_settings_form'),
+    'file' => 'drupal_sync.admin.inc',
+  );
+
+  $items['sync-test'] = array(
+    'title' => 'Test',
+    'type' => MENU_NORMAL_ITEM,
+    'page callback' => 'drupal_sync_test',
+    'access arguments' => array('access content'),
+  );
+
+  $items['sync-test2'] = array(
+    'title' => 'Test',
+    'type' => MENU_NORMAL_ITEM,
+    'page callback' => 'drupal_sync_run_sync',
+    'access arguments' => array('access content'),
+  );
+
+  //add node sync settings tab
+  $items['admin/structure/types/manage/%node_type/sync_settings'] = array(
+    'title' => 'Syncronization settings',
+    'type' => MENU_LOCAL_TASK,
+    'access callback' => 'drupal_sync_access_entity_settings_menu_tabs',
+    'access arguments' => array('node', 4),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('drupal_sync_add_entity_sync_settings_form', 'node', 4),
+
+  );
+
+  //add taxonomy sync settings tab
+  $items['admin/structure/taxonomy/%taxonomy_vocabulary_machine_name/sync_settings'] = array(
+    'title' => 'Syncronization settings',
+    'type' => MENU_LOCAL_TASK,
+    'access callback' => 'drupal_sync_access_entity_settings_menu_tabs',
+    'access arguments' => array('taxonomy', 3),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('drupal_sync_add_entity_sync_settings_form', 'taxonomy', 3),
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function drupal_sync_permission() {
+  return array(
+    'administer drupal sync settings' => array(
+      'title' => t('Administer drupal sync settings'),
+      'description' => t('Administer drupal sync settings'),
+    ),
+    'access drupal sync' => array(
+      'title' => t('Access to Drupal Sync'),
+      'description' => t('Access to Drupal Sync'),
+    ),
+  );
+}
+
+
+
+/**
+ * Implements of hook_cron().
+ */
+function drupal_sync_cron(){
+  $last_update_time = variable_get('drupal_sync_update_last_time', 0);
+  if ((time() - $last_update_time) > variable_get('drupal_sync_queue_update_frequency', 0)) {
+    variable_set('drupal_sync_update_last_time', time());
+    // start synct
+    //drupal_sync_run_sync();
+  }
+}
+
+/**
+ * Implements hook_form_alter()
+ */
+function drupal_sync_form_alter(&$form, &$form_state, $form_id) {
+  switch ($form_id) {
+    case "drupal_sync_admin_settings_form":
+//      if (isset($form_state['triggering_element'])) {
+//        $current_node_type = $form_state['triggering_element']['#value'];
+//        $i = $form_state['triggering_element']['#array_parents'][2];
+//        $remote_node_type = $form_state['triggering_element']['#array_parents'][4];
+//        drupal_sync_current_node_type_rel($form, $form_state, $current_node_type, $remote_node_type, $i);
+//      }
+
+      break;
+  }
+}
+
+function drupal_sync_process_both_sync_flag_changes($old_values, $new_values, $entity_type, $entity_type_id) {
+  global $base_url;
+
+  $drupal_sync_settings = variable_get('drupal_sync_settings', array());
+  $settings_to_send = array();
+  foreach ($new_values as $remote_site_id => $site_info) {
+
+    $old_sync_value = isset($old_values[$remote_site_id]['drupal_sync_both']) ? $old_values[$remote_site_id]['drupal_sync_both'] : 0;
+    $new_sync_value = isset($site_info['drupal_sync_both']) ? $site_info['drupal_sync_both'] : 0;
+
+    if ($old_sync_value != $new_sync_value) {
+      if ($new_sync_value == 1) {
+        //if "Sync in both directions " checked
+        //send all settings to remote site
+        $settings_to_send[$remote_site_id] = $site_info;
+      }
+      else {
+        //if "Sync in both directions " unchecked
+        //uncheck "Sync in both directions " on remote site
+        $settings_to_send[$remote_site_id] = $site_info;
+      }
+    }
+    else if ($new_sync_value == 1) {
+      //if "Sync in both directions " checked
+      //send all settings to remote site
+      $settings_to_send[$remote_site_id] = $site_info;
+    }
+
+    $url = !empty($drupal_sync_settings['drupal_sync_remote'][$remote_site_id]['url']) ? $drupal_sync_settings['drupal_sync_remote'][$remote_site_id]['url'] : NULL;
+    if (!empty($settings_to_send[$remote_site_id]['type']) && isset($url)) {
+      $settings_formated = array();
+      $settings_formated['site_url'] = $base_url;
+      $settings_formated['entity_type'] = $entity_type;
+      $settings_formated['reciever_entity_id'] = $settings_to_send[$remote_site_id]['type'];
+      $settings_formated['settings']['drupal_sync_both'] = $settings_to_send[$remote_site_id]['drupal_sync_both'];
+      $settings_formated['settings']['type'] = $entity_type_id;
+
+      $sync_types = module_invoke_all('drupal_sync_get_sync_types', array());
+      $settings_formated['settings']['remote_fields_info'] = (isset($sync_types[$entity_type][$entity_type_id]['fields'])) ? $sync_types[$entity_type][$entity_type_id]['fields'] : array();
+
+      $ref = array();
+      if(!empty($new_values[$remote_site_id]['remote_fields_info'])) {
+        foreach ($new_values[$remote_site_id]['remote_fields_info'] as $field_name => $field_info) {
+          $reference_field_name = array_search($field_name, $new_values[$remote_site_id]['ref']);
+          $ref[$field_name] = $reference_field_name ? $reference_field_name : 0;
+        }
+      }
+      $settings_formated['settings']['ref'] = $ref;
+      drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url);
+
+    } elseif (!empty($old_values[$remote_site_id]['type']) && isset($url)) {
+      // if empty $settings_to_send[$remote_site_id]['type'], clear settings on remote site
+      $settings_formated = array();
+      $settings_formated['site_url'] = $base_url;
+      $settings_formated['entity_type'] = $entity_type;
+      $settings_formated['reciever_entity_id'] = $old_values[$remote_site_id]['type'];
+      $settings_formated['settings']['drupal_sync_both'] = $settings_to_send[$remote_site_id]['drupal_sync_both'];
+      drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url);
+    }
+  }
+
+}
+
+function drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url) {
+  $result = drupal_sync_xmlrpc_send_entity_sync_settings($remote_site_id, $settings_formated);
+  //check result
+  if (!empty($result['status']) && $result['status'] == 'ok') {
+    drupal_set_message(t('Settings applied successfully on the site: @url', array('@url' => $url)), 'status');
+  }
+  else {
+    $error_message = '';
+    if (!empty($result['message'])) {
+      $error_message = t('Error synchronization settings with site: @url, Error message: @message', array('@url' => $url, '@message' => $result['message']));
+    }
+    else {
+      $error_message = t('Error synchronization settings with site: @url', array('@url' => $url));
+    }
+    drupal_set_message($error_message, 'error');
+  }
+}
+
+/**
+ * Menu access callback
+ *
+ * @param type $entity_type
+ * @param type $entity_type_obj
+ *
+ * @return boolean
+ */
+function drupal_sync_access_entity_settings_menu_tabs($entity_type, $entity_type_obj) {
+
+  if(!user_access('administer drupal sync settings')) {
+    return FALSE;
+  } else {
+    $drupal_sync_settings = variable_get('drupal_sync_settings', array());
+    $entity_type_id = _drupal_sync_get_entity_type_id($entity_type, $entity_type_obj);
+
+    switch($entity_type) {
+      case 'node' :
+        if(isset($drupal_sync_settings['drupal_sync_entities'][$entity_type][$entity_type_id])) {
+          return TRUE;
+        }
+        break;
+      case 'taxonomy':
+
+        if(isset($drupal_sync_settings['drupal_sync_entities'][$entity_type][$entity_type_id])) {
+          return TRUE;
+        }
+        break;
+    }
+  }
+
+  return FALSE;
+}
+
+/**
+ * Get entity type id
+ *
+ * @param type $entity_type
+ * @param type $entity_type_obj
+ * @return type
+ */
+function _drupal_sync_get_entity_type_id($entity_type, $entity_type_obj) {
+  switch ($entity_type) {
+    case 'node' :
+      return $entity_type_obj->type;
+      break;
+    case 'taxonomy':
+      return $entity_type_obj->vid;
+      break;
+  }
+}
+
