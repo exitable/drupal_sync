@@ -1,5 +1,5 @@
 name = Drupal Sync Additional Taxonomy Rules module
-description = Provide rules based on taxonomy for synchronization entities before multiple sites
+description = Provide rules based on taxonomy for synchronization entities between multiple sites
 package = Drupal Sync
 core = 7.x
 
