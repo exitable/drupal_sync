@@ -1,1 +1,17 @@
 name = Drupal Sync
+description = Provide synchronization entities before multiple sites
+package = Drupal Sync
+core = 7.x
+
+configure = admin/config/drupal_sync/settings
+
+dependencies[] = taxonomy
+dependencies[] = entity
+
+files[] = drupal_sync.module
+files[] = drupal_sync.admin.inc
+files[] = includes/drupal_sync.api.inc
+files[] = includes/drupal_sync.entity.inc
+files[] = includes/drupal_sync.forms.inc
+files[] = includes/drupal_sync.queue.inc
+files[] = includes/drupal_sync.xmlrpc.inc

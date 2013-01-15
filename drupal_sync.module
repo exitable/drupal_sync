@@ -1,9 +1,11 @@
 <?php
 
 /**
- * @file drupal_sync.module
- * Drupal Sync module
+ * @file
+ * Drupal Sync module.
  */
+define('DRUPAL_SYNC_MAX_ERRORS', 3);
+
 module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.api');
 module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.xmlrpc');
 module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.entity');
@@ -15,7 +17,6 @@ module_load_include('inc', 'drupal_sync', 'drupal_sync.admin');
  * Implements hook_menu().
  */
 function drupal_sync_menu() {
-  // This is the minimum information you can provide for a menu item.
   $items = array();
 
   $items['admin/config/drupal_sync'] = array(
@@ -37,19 +38,28 @@ function drupal_sync_menu() {
     'file' => 'drupal_sync.admin.inc',
   );
 
-  $items['sync-test'] = array(
-    'title' => 'Test',
-    'type' => MENU_NORMAL_ITEM,
-    'page callback' => 'drupal_sync_test',
-    'access arguments' => array('access content'),
+  $items['admin/config/drupal_sync/settings/edit'] = array(
+    'title' => 'Drupal Sync settings',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
   );
 
-  $items['sync-test2'] = array(
-    'title' => 'Test',
-    'type' => MENU_NORMAL_ITEM,
-    'page callback' => 'drupal_sync_run_sync',
-    'access arguments' => array('access content'),
+
+  $items['admin/config/drupal_sync/settings/backup'] = array(
+    'title' => 'Drupal Sync settings backup/restore',
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer drupal sync settings'),
+    'page callback' => 'drupal_sync_settings_backup',
   );
+
+
+  $items['run-drupal-sync'] = array(
+    'title' => 'Run drupal sync manually',
+    'type' => MENU_CALLBACK,
+    'page callback' => 'drupal_sync_run_manually',
+    'access arguments' => array('administer drupal sync settings'),
+  );
+
 
   //add node sync settings tab
   $items['admin/structure/types/manage/%node_type/sync_settings'] = array(
@@ -59,7 +69,6 @@ function drupal_sync_menu() {
     'access arguments' => array('node', 4),
     'page callback' => 'drupal_get_form',
     'page arguments' => array('drupal_sync_add_entity_sync_settings_form', 'node', 4),
-
   );
 
   //add taxonomy sync settings tab
@@ -67,11 +76,72 @@ function drupal_sync_menu() {
     'title' => 'Syncronization settings',
     'type' => MENU_LOCAL_TASK,
     'access callback' => 'drupal_sync_access_entity_settings_menu_tabs',
-    'access arguments' => array('taxonomy', 3),
+    'access arguments' => array('taxonomy_term', 3),
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('drupal_sync_add_entity_sync_settings_form', 'taxonomy', 3),
+    'page arguments' => array('drupal_sync_add_entity_sync_settings_form', 'taxonomy_term', 3),
   );
   return $items;
+}
+
+/***********************************************************
+ * Menu callbacks
+ ***********************************************************/
+
+/**
+ * Manually run drupal sync process.
+ */
+function drupal_sync_run_manually() {
+  drupal_sync_run_sync();
+  drupal_set_message(t("Drupal sync ran successfully."));
+  drupal_goto("admin/config/drupal_sync/drupal_sync_manager");
+}
+
+/**
+ * Menu access callback
+ *
+ * @param type $entity_type
+ * @param type $entity_type_obj
+ *
+ * @return boolean
+ */
+function drupal_sync_access_entity_settings_menu_tabs($entity_type, $entity_type_obj) {
+  if (!user_access('administer drupal sync settings')) {
+    return FALSE;
+  }
+  else {
+    $drupal_sync_settings = variable_get('drupal_sync_settings', array());
+    $entity_type_id = _drupal_sync_get_entity_type_id($entity_type, $entity_type_obj);
+    if (isset($drupal_sync_settings['drupal_sync_entities'][$entity_type][$entity_type_id])) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/***********************************************************
+ * Hooks implementations
+ ***********************************************************/
+
+/**
+ * Implements of hook_cron().
+ */
+function drupal_sync_cron() {
+  $last_update_time = variable_get('drupal_sync_update_last_time', 0);
+  if ((time() - $last_update_time) > variable_get('drupal_sync_queue_update_frequency', 0)) {
+    variable_set('drupal_sync_update_last_time', time());
+    // start synct
+    drupal_sync_run_sync();
+  }
+}
+
+/**
+ * Implements hook_init().
+ */
+function drupal_sync_init() {
+  if (!drupal_sync_check_site_domain()) {
+    $message = t('Drupal sync settings is wrong. Check settings and site domain') . " " . l(t("here"), 'admin/config/drupal_sync/settings') . ".";
+    drupal_set_message($message, 'error');
+  }
 }
 
 /**
@@ -90,167 +160,134 @@ function drupal_sync_permission() {
   );
 }
 
-
-
-/**
- * Implements of hook_cron().
- */
-function drupal_sync_cron(){
-  $last_update_time = variable_get('drupal_sync_update_last_time', 0);
-  if ((time() - $last_update_time) > variable_get('drupal_sync_queue_update_frequency', 0)) {
-    variable_set('drupal_sync_update_last_time', time());
-    // start synct
-    //drupal_sync_run_sync();
-  }
-}
-
-/**
- * Implements hook_form_alter()
- */
-function drupal_sync_form_alter(&$form, &$form_state, $form_id) {
-  switch ($form_id) {
-    case "drupal_sync_admin_settings_form":
-//      if (isset($form_state['triggering_element'])) {
-//        $current_node_type = $form_state['triggering_element']['#value'];
-//        $i = $form_state['triggering_element']['#array_parents'][2];
-//        $remote_node_type = $form_state['triggering_element']['#array_parents'][4];
-//        drupal_sync_current_node_type_rel($form, $form_state, $current_node_type, $remote_node_type, $i);
-//      }
-
-      break;
-  }
-}
-
-function drupal_sync_process_both_sync_flag_changes($old_values, $new_values, $entity_type, $entity_type_id) {
-  global $base_url;
-
-  $drupal_sync_settings = variable_get('drupal_sync_settings', array());
-  $settings_to_send = array();
-  foreach ($new_values as $remote_site_id => $site_info) {
-
-    $old_sync_value = isset($old_values[$remote_site_id]['drupal_sync_both']) ? $old_values[$remote_site_id]['drupal_sync_both'] : 0;
-    $new_sync_value = isset($site_info['drupal_sync_both']) ? $site_info['drupal_sync_both'] : 0;
-
-    if ($old_sync_value != $new_sync_value) {
-      if ($new_sync_value == 1) {
-        //if "Sync in both directions " checked
-        //send all settings to remote site
-        $settings_to_send[$remote_site_id] = $site_info;
-      }
-      else {
-        //if "Sync in both directions " unchecked
-        //uncheck "Sync in both directions " on remote site
-        $settings_to_send[$remote_site_id] = $site_info;
-      }
-    }
-    else if ($new_sync_value == 1) {
-      //if "Sync in both directions " checked
-      //send all settings to remote site
-      $settings_to_send[$remote_site_id] = $site_info;
-    }
-
-    $url = !empty($drupal_sync_settings['drupal_sync_remote'][$remote_site_id]['url']) ? $drupal_sync_settings['drupal_sync_remote'][$remote_site_id]['url'] : NULL;
-    if (!empty($settings_to_send[$remote_site_id]['type']) && isset($url)) {
-      $settings_formated = array();
-      $settings_formated['site_url'] = $base_url;
-      $settings_formated['entity_type'] = $entity_type;
-      $settings_formated['reciever_entity_id'] = $settings_to_send[$remote_site_id]['type'];
-      $settings_formated['settings']['drupal_sync_both'] = $settings_to_send[$remote_site_id]['drupal_sync_both'];
-      $settings_formated['settings']['type'] = $entity_type_id;
-
-      $sync_types = module_invoke_all('drupal_sync_get_sync_types', array());
-      $settings_formated['settings']['remote_fields_info'] = (isset($sync_types[$entity_type][$entity_type_id]['fields'])) ? $sync_types[$entity_type][$entity_type_id]['fields'] : array();
-
-      $ref = array();
-      if(!empty($new_values[$remote_site_id]['remote_fields_info'])) {
-        foreach ($new_values[$remote_site_id]['remote_fields_info'] as $field_name => $field_info) {
-          $reference_field_name = array_search($field_name, $new_values[$remote_site_id]['ref']);
-          $ref[$field_name] = $reference_field_name ? $reference_field_name : 0;
-        }
-      }
-      $settings_formated['settings']['ref'] = $ref;
-      drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url);
-
-    } elseif (!empty($old_values[$remote_site_id]['type']) && isset($url)) {
-      // if empty $settings_to_send[$remote_site_id]['type'], clear settings on remote site
-      $settings_formated = array();
-      $settings_formated['site_url'] = $base_url;
-      $settings_formated['entity_type'] = $entity_type;
-      $settings_formated['reciever_entity_id'] = $old_values[$remote_site_id]['type'];
-      $settings_formated['settings']['drupal_sync_both'] = $settings_to_send[$remote_site_id]['drupal_sync_both'];
-      drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url);
-    }
-  }
-
-}
-
-function drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url) {
-  $result = drupal_sync_xmlrpc_send_entity_sync_settings($remote_site_id, $settings_formated);
-  //check result
-  if (!empty($result['status']) && $result['status'] == 'ok') {
-    drupal_set_message(t('Settings applied successfully on the site: @url', array('@url' => $url)), 'status');
-  }
-  else {
-    $error_message = '';
-    if (!empty($result['message'])) {
-      $error_message = t('Error synchronization settings with site: @url, Error message: @message', array('@url' => $url, '@message' => $result['message']));
-    }
-    else {
-      $error_message = t('Error synchronization settings with site: @url', array('@url' => $url));
-    }
-    drupal_set_message($error_message, 'error');
-  }
-}
-
-/**
- * Menu access callback
- *
- * @param type $entity_type
- * @param type $entity_type_obj
- *
- * @return boolean
- */
-function drupal_sync_access_entity_settings_menu_tabs($entity_type, $entity_type_obj) {
-
-  if(!user_access('administer drupal sync settings')) {
-    return FALSE;
-  } else {
-    $drupal_sync_settings = variable_get('drupal_sync_settings', array());
-    $entity_type_id = _drupal_sync_get_entity_type_id($entity_type, $entity_type_obj);
-
-    switch($entity_type) {
-      case 'node' :
-        if(isset($drupal_sync_settings['drupal_sync_entities'][$entity_type][$entity_type_id])) {
-          return TRUE;
-        }
-        break;
-      case 'taxonomy':
-
-        if(isset($drupal_sync_settings['drupal_sync_entities'][$entity_type][$entity_type_id])) {
-          return TRUE;
-        }
-        break;
-    }
-  }
-
-  return FALSE;
-}
+/***********************************************************
+ * Module functions
+ ***********************************************************/
 
 /**
  * Get entity type id
  *
  * @param type $entity_type
  * @param type $entity_type_obj
+ *
  * @return type
  */
 function _drupal_sync_get_entity_type_id($entity_type, $entity_type_obj) {
+  $type_id = NULL;
   switch ($entity_type) {
     case 'node' :
-      return $entity_type_obj->type;
+      $type_id =  $entity_type_obj->type;
       break;
-    case 'taxonomy':
-      return $entity_type_obj->vid;
+    case 'taxonomy_term':
+      $type_id =  $entity_type_obj->vid;
       break;
   }
+
+  drupal_alter('drupal_sync_get_entity_type_id', $type_id, $entity_type, $entity_type_obj);
+
+  return isset($type_id) ? $type_id : NULL ;
 }
 
+/**
+ * Get entity type id
+ *
+ * @param type $entity_type
+ * @param array $entity
+ *
+ * @return type
+ */
+function _drupal_sync_get_entity_id($entity_type, $entity) {
+  $type_id = NULL;
+  switch ($entity_type) {
+    case 'node' :
+      $type_id =  $entity['nid'];
+      break;
+    case 'taxonomy_term':
+      $type_id =  $entity['tid'];
+      break;
+  }
+
+  drupal_alter('drupal_sync_get_entity_id', $type_id, $entity_type, $entity);
+
+  return isset($type_id) ? $type_id : NULL ;
+}
+
+/**
+ * Drupal sync bacup/restore functionality
+ *
+ * @return string
+ */
+function drupal_sync_settings_backup() {
+  $action = arg(5);
+  $domain_name = str_replace('www.', '', $_SERVER['HTTP_HOST']);
+  $domain_name = str_replace(array('.', '-'), array('_', '_'), $domain_name);
+
+  $filename = realpath(drupal_get_path("module", "drupal_sync") . "/backup");
+  $file_real_name = $filename . "/" . $domain_name . ".dat";;
+
+  if (!file_exists($file_real_name)) {
+    $fh = fopen($file_real_name, "x+");
+    fclose($fh);
+    chmod($file_real_name, 0440);
+  }
+
+  if ($action == 'restore') {
+    $data = file_get_contents($file_real_name);
+    $data = unserialize($data);
+    if (isset($data['settings']) && isset($data['relations'])) {
+      variable_set('drupal_sync_settings', $data['settings']);
+      variable_set('drupal_sync_remote_relation_settings', $data['relations']);
+      drupal_set_message(t("Drupal sync settings have been restored"));
+    }
+    else {
+      drupal_set_message(t("Error! Drupal sync settings have not been restored. Wrong format of backup file!"), 'error');
+    }
+    drupal_goto("admin/config/drupal_sync/settings/backup");
+  }
+  elseif ($action == 'backup') {
+    $data = array(
+      'settings' => variable_get('drupal_sync_settings', array()),
+      'relations' => variable_get('drupal_sync_remote_relation_settings', array())
+    );
+
+    $apache_user = posix_getpwuid(posix_geteuid());
+    $file_owner = posix_getpwuid(fileowner($file_real_name));
+
+    if ($apache_user != $file_owner) {
+      drupal_set_message(t("Drupal sync settings have not been saved.") . " <br>" . t("Check backup file owner permissions!"), 'error');
+      drupal_goto("admin/config/drupal_sync/settings/backup");
+    }
+
+    $perms = chmod($file_real_name, 0774);
+
+    if ($perms) {
+      $result = file_put_contents($file_real_name, serialize($data));
+      chmod($file_real_name, 0440);
+      drupal_set_message(t('Drupal sync settings have been saved'));
+    }
+    else {
+      $result = file_put_contents($file_real_name, serialize($data));
+      chmod($file_real_name, 0440);
+      drupal_set_message(t('Drupal sync settings have not been saved. Check backup file permissions!'), 'error');
+    }
+    drupal_goto("admin/config/drupal_sync/settings/backup");
+  }
+
+
+  $content = l("[ " . t("Create backup") . " ]", "admin/config/drupal_sync/settings/backup/backup") . "<br><br>" .
+      l("[ " . t("Restore backup") . " ]", "admin/config/drupal_sync/settings/backup/restore");
+
+  return $content;
+}
+
+/**
+ * Make 'sha256' hash based on site info, and curent time
+ *
+ * @return string
+ */
+function drupal_sync_make_site_id_hash() {
+
+  $data =  $_SERVER['HTTP_HOST'];
+  $data_hash = hash('sha256', $data);
+  return $data_hash;
+}

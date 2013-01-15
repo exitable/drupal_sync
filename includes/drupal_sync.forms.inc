@@ -1,14 +1,20 @@
 <?php
 
+/**
+ * @file
+ * drupal_sync.forms.inc
+ * Provide various forms
+ */
 
 /**
  * Add sinc settings form fields to entity edit form
  *
- * @param type $form
- * @param type $form_state
+ * @param array $form
+ * @param array $form_state
+ *
+ * @return array
  */
 function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
-
   $entity_type = $form_state['build_info']['args'][0];
   $entity_type_id = _drupal_sync_get_entity_type_id($entity_type, $form_state['build_info']['args'][1]);
 
@@ -29,9 +35,6 @@ function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
       '#value' => $entity_type_id,
     );
 
-    /************************
-     * Remote Sites sections
-     ************************/
     $drupal_sync_relation_settings = variable_get('drupal_sync_remote_relation_settings', array());
 
     $entity_relation_settings = !(empty($drupal_sync_relation_settings[$entity_type][$entity_type_id])) ? $drupal_sync_relation_settings[$entity_type][$entity_type_id] : array();
@@ -45,6 +48,7 @@ function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
       );
 
       if (!empty($site['url']) && !empty($site['login']) && !empty($site['pass'])) {
+
         $remote_config = drupal_sync_get_remote_config($site['url'], $site['login'], $site['pass']);
 
         $form_state['remote_config'] = $remote_config;
@@ -56,7 +60,6 @@ function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
           }
 
           $current_remote_entity_type = !empty($entity_relation_settings[$site_key]['type']) ? $entity_relation_settings[$site_key]['type'] : 0;
-
           $form['drupal_sync_settings']['drupal_sync_remote'][$site_key]['type'] = array(
             '#type' => 'select',
             '#title' => t('Choose remote @entity type', array('@entity' => $entity_type)),
@@ -78,14 +81,12 @@ function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
           $relationship_section = (isset($entity_relation_settings[$site_key])) ? $entity_relation_settings[$site_key] : array();
 
           _drupal_sync_current_node_type_ref($form, $form_state, $entity_type, $entity_type_id, $current_remote_entity_type, $site_key, $relationship_section);
-
-
         }
         else {
           $form['drupal_sync_settings']['drupal_sync_remote'][$site_key]['empty'] = array(
             '#title' => t('Remote site is unavailable, check connection settings'),
             '#type' => 'item',
-            '#markup' => l('Connection settings', 'admin/config/drupal_sync/settings', array('attributes' => array('target' => '_blank'), 'fragment' => 'edit-drupal-sync-settings-drupal-sync-remote-' . $site_key)),
+            '#markup' => l(t('Connection settings'), 'admin/config/drupal_sync/settings', array('attributes' => array('target' => '_blank'), 'fragment' => 'edit-drupal-sync-settings-drupal-sync-remote-' . $site_key)),
           );
 
           if (!empty($drupal_sync_relation_settings[$entity_type][$entity_type_id][$site_key])) {
@@ -108,7 +109,7 @@ function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
 
   $form['actions']['submit'] = array(
     '#type' => 'submit',
-    '#value' => t('Submit')
+    '#value' => t('Save'),
   );
   return $form;
 }
@@ -125,7 +126,7 @@ function drupal_sync_add_entity_sync_settings_form($form, &$form_state) {
  */
 function _drupal_sync_current_node_type_ref(&$form, $form_state, $entity_type, $entity_type_id, $remote_entity_type_id, $site_key, $relationship_section = array()) {
 
-  if(isset($form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$site_key]['type'])) {
+  if (isset($form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$site_key]['type'])) {
     //process ajax entity type selection
     $remote_entity_type_id =$form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$site_key]['type'];
   }
@@ -136,31 +137,31 @@ function _drupal_sync_current_node_type_ref(&$form, $form_state, $entity_type, $
     $current_fields = (isset($sync_types[$entity_type][$entity_type_id]['fields'])) ? $sync_types[$entity_type][$entity_type_id]['fields'] : array();
 
     $remote_config = (isset($form_state['remote_config'])) ? $form_state['remote_config'] : array();
-
-    $tmp = array(0 => t('-- not sync --'));
-    foreach ($current_fields as $key => $value) {
-      $tmp[$key] = $value['label'] . ' (' . t('Local') . ')';
-    }
-    $current_fields = $tmp;
-    unset($tmp);
-
     $remote_fields = (isset($remote_config[$entity_type][$remote_entity_type_id]['fields'])) ? $remote_config[$entity_type][$remote_entity_type_id]['fields'] : array();
 
-    foreach ($remote_fields as $field_key => $field) {
+    $form['drupal_sync_settings']['drupal_sync_remote'][$site_key]['remote_fields_info'] = array(
+        '#type' => 'value',
+        '#value' => $remote_fields,
+    );
+
+    $tmp = array(0 => t('-- not sync --'));
+    foreach ($remote_fields as $key => $value) {
+      $tmp[$key] = $value['label'] . ' (' . t('Remote') . ')';
+    }
+    $remote_fields = $tmp;
+    unset($tmp);
+
+    foreach ($current_fields as $field_key => $field) {
       $drupal_sync_current_entity_type = (isset($relationship_section['ref'][$field_key])) ? $relationship_section['ref'][$field_key] : array();
       $form['drupal_sync_settings']['drupal_sync_remote'][$site_key]['ref'][$field_key] = array(
         '#type' => 'select',
-        '#title' => $field['label'] . ' (' . t('Remote') . ')',
-        '#options' => $current_fields,
+        '#title' => $field['label'] . ' (' . t('Local') . ')',
+        '#options' => $remote_fields,
         '#prefix' => '<div class="drupal-sync-current-node-type-select">',
         '#suffix' => '</div>',
         '#default_value' => $drupal_sync_current_entity_type,
       );
     }
-      $form['drupal_sync_settings']['drupal_sync_remote'][$site_key]['remote_fields_info'] = array(
-        '#type' => 'value',
-        '#value' => $remote_fields,
-      );
   }
   else {
     unset($form['drupal_sync_settings']['drupal_sync_remote'][$site_key]['ref']);
@@ -170,18 +171,17 @@ function _drupal_sync_current_node_type_ref(&$form, $form_state, $entity_type, $
 /**
  * Form drupal_sync_add_entity_sync_settings_form validation
  *
- * @param type $form
- * @param type $form_state
+ * @param array $form
+ * @param array $form_state
  */
 function drupal_sync_add_entity_sync_settings_form_validate($form, $form_settings) {
-
   foreach ($form_settings['values']['drupal_sync_settings']['drupal_sync_remote'] as $site_key => $site_values) {
     //check unique field mapping
     if (!empty($site_values['ref'])) {
       $duplicate_values = _drupal_sync_get_duplicates_values($site_values['ref']);
       if (!empty($duplicate_values)) {
         foreach ($site_values['ref'] as $field_key => $field_remote_key) {
-          if (in_array($field_remote_key, $duplicate_values) && $field_remote_key != 0) {
+          if (in_array($field_remote_key, $duplicate_values) && !empty($field_remote_key)) {
             form_set_error('drupal_sync_settings][drupal_sync_remote][' . $site_key . '][ref][' . $field_key, 'Error, Select different fields for each local field');
           }
         }
@@ -192,8 +192,9 @@ function drupal_sync_add_entity_sync_settings_form_validate($form, $form_setting
 
 /**
  * Form drupal_sync_add_entity_sync_settings_form submit
- * @param type $form
- * @param type $form_state
+ *
+ * @param array $form
+ * @param array $form_state
  */
 function drupal_sync_add_entity_sync_settings_form_submit($form, &$form_state) {
   $entity_type = $form_state['values']['drupal_sync_settings']['entity_type'];
@@ -203,12 +204,11 @@ function drupal_sync_add_entity_sync_settings_form_submit($form, &$form_state) {
 
   foreach ($values as $site_key => $site) {
     if (!empty($site['keep_settings'])) {
-
       if ($site['keep_settings'] == 'keep') {
         $values[$site_key] = $values[$site_key]['previous_settings'];
-
-      } else {
-        unset ($values[$site_key]['previous_settings']);
+      }
+      else {
+        unset($values[$site_key]['previous_settings']);
       }
       unset($values[$site_key]['keep_settings']);
     }
@@ -217,24 +217,119 @@ function drupal_sync_add_entity_sync_settings_form_submit($form, &$form_state) {
   $drupal_sync_remote_relation_settings = variable_get('drupal_sync_remote_relation_settings', array());
   $old_values = isset($drupal_sync_remote_relation_settings[$entity_type][$entity_type_id]) ? $drupal_sync_remote_relation_settings[$entity_type][$entity_type_id] : array();
 
-
   $drupal_sync_remote_relation_settings[$entity_type][$entity_type_id] = $values;
-
   variable_set('drupal_sync_remote_relation_settings', $drupal_sync_remote_relation_settings);
-
   drupal_sync_process_both_sync_flag_changes($old_values, $values, $entity_type, $entity_type_id);
 }
 
 /**
  * Ajax callback for drupal_sync_add_entity_sync_settings_form
  *
- * @param type $form
- * @param type $form_state
+ * @param array $form
+ * @param array $form_state
+ *
  * @return array
  */
 function drupal_sync_current_entity_type_ajax_callback($form, $form_state) {
-
   $site_key = $form_state['triggering_element']['#array_parents'][2];
   return $form['drupal_sync_settings']['drupal_sync_remote'][$site_key];
 
+}
+/**
+ * Set the same
+ *
+ * @param array $old_values
+ * @param array $new_values
+ * @param string $entity_type
+ * @param string $entity_type_id
+ */
+function drupal_sync_process_both_sync_flag_changes($old_values, $new_values, $entity_type, $entity_type_id) {
+  global $base_url;
+
+  $drupal_sync_settings = variable_get('drupal_sync_settings', array());
+  $settings_to_send = array();
+  foreach ($new_values as $remote_site_id => $site_info) {
+
+    $old_sync_value = isset($old_values[$remote_site_id]['drupal_sync_both']) ? $old_values[$remote_site_id]['drupal_sync_both'] : 0;
+    $new_sync_value = isset($site_info['drupal_sync_both']) ? $site_info['drupal_sync_both'] : 0;
+
+    if ($old_sync_value != $new_sync_value) {
+      if ($new_sync_value == 1) {
+        //if "Sync in both directions " checked
+        //send all settings to remote site
+        $settings_to_send[$remote_site_id] = $site_info;
+      }
+      else {
+        //if "Sync in both directions " unchecked
+        //uncheck "Sync in both directions " on remote site
+        $settings_to_send[$remote_site_id] = $site_info;
+      }
+    }
+    elseif ($new_sync_value == 1) {
+      //if "Sync in both directions " checked
+      //send all settings to remote site
+      $settings_to_send[$remote_site_id] = $site_info;
+    }
+    else {
+      //if "Sync in both directions" not checked and wasnt chechecked before submit, just do nothing
+      continue;
+    }
+
+    $url = !empty($drupal_sync_settings['drupal_sync_remote'][$remote_site_id]['url']) ? $drupal_sync_settings['drupal_sync_remote'][$remote_site_id]['url'] : NULL;
+    if (!empty($settings_to_send[$remote_site_id]['type']) && isset($url)) {
+      $settings_formated = array();
+      $settings_formated['site_url'] = $base_url;
+      $settings_formated['entity_type'] = $entity_type;
+      $settings_formated['reciever_entity_id'] = $settings_to_send[$remote_site_id]['type'];
+      $settings_formated['settings']['drupal_sync_both'] = $settings_to_send[$remote_site_id]['drupal_sync_both'];
+      $settings_formated['settings']['type'] = $entity_type_id;
+
+      $sync_types = module_invoke_all('drupal_sync_get_sync_types', array());
+      $settings_formated['settings']['remote_fields_info'] = (isset($sync_types[$entity_type][$entity_type_id]['fields'])) ? $sync_types[$entity_type][$entity_type_id]['fields'] : array();
+
+      $ref = array();
+      if (!empty($new_values[$remote_site_id]['remote_fields_info'])) {
+        foreach ($new_values[$remote_site_id]['remote_fields_info'] as $field_name => $field_info) {
+          $reference_field_name = array_search($field_name, $new_values[$remote_site_id]['ref']);
+          $ref[$field_name] = $reference_field_name ? $reference_field_name : 0;
+        }
+      }
+      $settings_formated['settings']['ref'] = $ref;
+      drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url);
+    }
+    elseif (!empty($old_values[$remote_site_id]['type']) && isset($url)) {
+      // if empty $settings_to_send[$remote_site_id]['type'], clear settings on remote site
+      $settings_formated = array();
+      $settings_formated['site_url'] = $base_url;
+      $settings_formated['entity_type'] = $entity_type;
+      $settings_formated['reciever_entity_id'] = $old_values[$remote_site_id]['type'];
+      $settings_formated['settings']['drupal_sync_both'] = isset($settings_to_send[$remote_site_id]['drupal_sync_both']) ? $settings_to_send[$remote_site_id]['drupal_sync_both'] : 0;
+      drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url);
+    }
+  }
+}
+
+/**
+ * Send entyti sync settings to the remote site, and process xml responce
+ *
+ * @param string $remote_site_id
+ * @param array $settings_formated
+ * @param string $url
+ */
+function drupal_sync_send_settings_to_remote_site($remote_site_id, $settings_formated, $url) {
+  $result = drupal_sync_xmlrpc_send_entity_sync_settings($url, $settings_formated);
+  //check result
+  if (!empty($result['status']) && $result['status'] == 'ok') {
+    drupal_set_message(t('Settings applied successfully on the site: @url', array('@url' => $url)), 'status');
+  }
+  else {
+    $error_message = '';
+    if (!empty($result['message'])) {
+      $error_message = t('Error synchronization settings with site: @url, Error message: @message', array('@url' => $url, '@message' => $result['message']));
+    }
+    else {
+      $error_message = t('Error synchronization settings with site: @url', array('@url' => $url));
+    }
+    drupal_set_message($error_message, 'error');
+  }
 }

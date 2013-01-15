@@ -1,0 +1,8 @@
+name = Drupal Sync manager module
+description = Provide manager interface for synchronization entities before multiple sites
+package = Drupal Sync
+core = 7.x
+
+files[] = drupal_sync_manager.module
+
+dependencies[] = drupal_sync
