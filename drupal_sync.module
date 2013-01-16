@@ -139,8 +139,8 @@ function drupal_sync_cron() {
  */
 function drupal_sync_init() {
   if (!drupal_sync_check_site_domain()) {
-    $message = t('Drupal sync settings is wrong. Check settings and site domain') . " " . l(t("here"), 'admin/config/drupal_sync/settings') . ".";
-    drupal_set_message($message, 'error');
+    $message = t('Drupal sync settings is wrong. Check settings and site domain !link.', array('!link' => l(t("here"), 'admin/config/drupal_sync/settings')));
+    drupal_set_message($message, 'warning');
   }
 }
 

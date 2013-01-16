@@ -9,7 +9,7 @@
  * Implements hook_drupal_sync_entity_field_types_info().
  */
 function drupal_sync_drupal_sync_entity_field_types_info($types = array()) {
-  $types['text_formatted'] = array('value');
+  $types['text_formatted'] = array('value', 'format');
   $types['date'] = array('value', 'value2', 'offset', 'offset2', 'timezone', 'show_todate', 'date_type', 'timezone_db');
   $types['field_item_link'] = array('url', 'title');
   $types['field_item_image'] = array('fid', 'alt', 'title', 'description');

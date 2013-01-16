@@ -44,7 +44,7 @@ function drupal_sync_xmlrpc_sync_alert($entity, $type, $op, $remote_url, $result
   }
   if (($op == 'insert' || $op == 'update')) {
     //if the same insert or update operation in progres, stop sync
-    $in_progress_op = drupal_sync_get_in_progress_operation($entity['source_eid'], $entity['source_site_id'], $op, $type) ;
+    $in_progress_op = drupal_sync_get_in_progress_operation($entity['source_eid'], $entity['source_site_id'], $op, $type);
     if (!empty($in_progress_op)) {
       watchdog('drupal_sync', 'Trying to process operation that allready in proggress @entity', array('@entity' => '<pre>' . print_r($entity, TRUE) . '</pre>'));
       return FALSE;
@@ -122,7 +122,6 @@ function drupal_sync_xmlrpc_sync_alert($entity, $type, $op, $remote_url, $result
   drupal_alter('drupal_sync_processings_incoming_operation_after', $op_result, $entity, $context);
 
   return isset($op_result) ? $op_result : FALSE;
-
 }
 
 /**
@@ -343,7 +342,6 @@ function drupal_sync_entity_add_fields(&$entity_local, $entity_remote, $entity_t
 
   $types = array();
   $types = module_invoke_all('drupal_sync_entity_field_types_info', $types);
-
   foreach ($entity_remote['entity_fields'] as $field_key => $values) {
     if ($entity_type == 'taxonomy_term' && $field_key == 'parent') {
       //provides values for taxonomy_term relations, find local tids for remote taxonomy tids
@@ -354,14 +352,17 @@ function drupal_sync_entity_add_fields(&$entity_local, $entity_remote, $entity_t
             $field_value[0] = 0;
           }
           else {
-            $local_tid = drupal_sync_local_store_get_id_by_source($value['tid'], $value['source_site_id'], 'taxonomy_term');
-            if (!empty($local_tid)) {
-              $field_value[$local_tid] = $local_tid;
+            if (isset($value['source_site_id'])) {
+              $local_tid = drupal_sync_local_store_get_id_by_source($value['tid'], $value['source_site_id'], 'taxonomy_term');
+              if (!empty($local_tid)) {
+                $field_value[$local_tid] = $local_tid;
+              }
             }
           }
         }
       }
-      $entity_local->$field_key = $field_value;
+      //if we cant find parent tid, setup root parent array(0 => 0)
+      $entity_local->$field_key = !empty($field_value) ? $field_value : array(0 => 0);
     }
     elseif (!is_array($values)) {
       //if it's not array, just set value, for example node Titles
@@ -376,8 +377,10 @@ function drupal_sync_entity_add_fields(&$entity_local, $entity_remote, $entity_t
         $field_value = array();
         foreach ($local_field_values as $local_field_key => $local_field_value) {
           drupal_alter('drupal_sync_entity_fields_values', $local_field_value, $entity_remote, $entity_type);
-          foreach ($sync_field_fields as $sync_field_field) {
-            $field_value[LANGUAGE_NONE][$local_field_key][$sync_field_field] = array_shift($local_field_value);
+          if (!empty($local_field_value)) {
+            foreach ($sync_field_fields as $sync_field_field) {
+              $field_value[LANGUAGE_NONE][$local_field_key][$sync_field_field] = array_shift($local_field_value);
+            }
           }
         }
         $entity_local->$field_key = $field_value;
@@ -407,8 +410,10 @@ function drupal_sync_drupal_sync_entity_fields_values_alter(&$values, $entity_re
   }
   //change remote term reference tid on the corresponding local term tid
 
-  if (isset($values['tid']) && isset($values['tid_site_source_url'])) {
-    $local_tid = drupal_sync_local_store_get_id_by_source($values['tid'], $values['tid_site_source_url'], 'taxonomy_term');
+  if (isset($values['tid'])) {
+    if (isset($values['tid_site_source_url'])) {
+      $local_tid = drupal_sync_local_store_get_id_by_source($values['tid'], $values['tid_site_source_url'], 'taxonomy_term');
+    }
     if (!empty($local_tid)) {
       unset($values['tid_site_source_url']);
       $values['tid'] = $local_tid;
@@ -615,6 +620,7 @@ function drupal_sync_local_store_delete_all_rows($eid, $entity_type) {
           ->condition('entity_type', $entity_type)
           ->execute();
 }
+
 /**
  * Get local entity id by source id
  *
@@ -814,7 +820,6 @@ function drupal_sync_send_email_notification($message = '') {
   }
   return FALSE;
 }
-
 
 /**
  * Check if drupal sync settings has right current site domain.
