@@ -163,9 +163,9 @@ function drupal_sync_admin_settings_form($form, &$form_state) {
 
 
 
-  /*****************************************************
+  /*   * ***************************************************
    * Site domains
-   ******************************************************/
+   * **************************************************** */
 
   $domains = (isset($data['drupal_sync_domains']['drupal_sync_domain'])) ? $data['drupal_sync_domains']['drupal_sync_domain'] : array();
 
@@ -249,15 +249,15 @@ function drupal_sync_admin_settings_form($form, &$form_state) {
   );
 
 
-  /*****************************************************************
+  /*   * ***************************************************************
    * Entities section
-   *****************************************************************/
+   * *************************************************************** */
   $defaults = isset($data['drupal_sync_entities']) ? $data['drupal_sync_entities'] : array();
   drupal_alter('drupal_sync_types_build_form', $form, $types, $defaults);
 
-  /*****************************************************************
+  /*   * ***************************************************************
    * Sync remote section
-   *****************************************************************/
+   * *************************************************************** */
 
   $form['drupal_sync_settings']['drupal_sync_remote'] = array(
     '#type' => 'fieldset',
@@ -365,8 +365,6 @@ function drupal_sync_remote_remove_one($form, &$form_state) {
   $form_state['rebuild'] = TRUE;
 }
 
-
-
 /**
  * Submit handler for the "add-one-more" button.
  *
@@ -397,8 +395,6 @@ function drupal_sync_domain_remove_one($form, &$form_state) {
   }
   $form_state['rebuild'] = TRUE;
 }
-
-
 
 /**
  * Form drupal_sync_admin_settings_form Validation
@@ -505,7 +501,7 @@ function drupal_sync_settings_backup() {
   $action = arg(5);
   $domain_name = str_replace('www.', '', $_SERVER['HTTP_HOST']);
   $domain_name = str_replace(array('.', '-'), array('_', '_'), $domain_name);
-  if(!drupal_realpath('private://')) {
+  if (!drupal_realpath('private://')) {
     drupal_set_message(t('Please, set up Private file system path !link', array('!link' => l('here', 'admin/config/media/file-system'))), 'error');
     return '';
   }
@@ -513,7 +509,7 @@ function drupal_sync_settings_backup() {
   $filedir = 'private://drupal_sync';
   file_prepare_directory($filedir, FILE_CREATE_DIRECTORY);
 
-  $file_real_name = drupal_realpath($filedir) . "/" . $domain_name . ".dat";;
+  $file_real_name = drupal_realpath($filedir) . "/" . $domain_name . ".dat";
 
   if (!file_exists($file_real_name)) {
     $fh = fopen($file_real_name, "x+");
