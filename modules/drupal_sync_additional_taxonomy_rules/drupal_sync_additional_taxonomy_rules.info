@@ -5,4 +5,6 @@ core = 7.x
 
 files[] = drupal_sync_additional.module
 
+configure = admin/config/drupal_sync/drupal_sync_additional_taxonomy_rules
+
 dependencies[] = drupal_sync

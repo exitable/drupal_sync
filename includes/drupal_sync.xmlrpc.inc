@@ -36,7 +36,7 @@ function drupal_sync_xmlrpc() {
     'drupal_sync_xmlrpc.set_entity_sync_settings',
     'drupal_sync_xmlrpc_set_entity_sync_settings',
     array('array', 'array'),
-    t('Set entity syncronization settings')
+    t('Set entity synchronization settings')
   );
 
 
@@ -51,7 +51,7 @@ function drupal_sync_xmlrpc() {
 }
 
 /**
- * Set entity syncronization settings
+ * Set entity synchronization settings
  *
  * @param array $settings
  *
@@ -301,7 +301,7 @@ function drupal_sync_xmlrpc_custom_send($remote_site_id, $data) {
 }
 
 /**
- * xmlrpc prepare request: Send entity syncronizatio settings to the remote site.
+ * xmlrpc prepare request: Send entity synchronizatio settings to the remote site.
  *
  * @param string $remote_site_id
  * @param array $settings

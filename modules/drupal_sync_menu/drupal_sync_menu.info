@@ -1,5 +1,5 @@
 name = Drupal Sync menu module
-description = Provides synchronization menu links for the nodes between multiple sites
+description = Provides synchronization menu links between multiple sites
 package = Drupal Sync
 core = 7.x
 

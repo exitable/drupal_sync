@@ -8,7 +8,7 @@ Installation
 1) Enable the module. Then go to Settings page- admin/config/drupal_sync/settings
  on all sites that should be synchronized. Select all menu types being
 synchronized  in "SYNC ENTITIES" section.
-2) "Syncronization settings"  layout will appear on Menu edit
+2) "Synchronization settings"  layout will appear on Menu edit
 pages-admin/structure/menu/manage/%menu-name.  Here you can finish setting up
 synchronization by customizing outer websites.
 

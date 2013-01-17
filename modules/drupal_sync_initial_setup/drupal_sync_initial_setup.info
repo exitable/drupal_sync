@@ -4,4 +4,7 @@ package = Drupal Sync
 core = 7.x
 
 files[] = drupal_sync_initial_setup.module
+
+configure = admin/config/drupal_sync/drupal_sync_initial_setup
+
 dependencies[] = drupal_sync

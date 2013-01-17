@@ -299,41 +299,47 @@ function drupal_sync_queue_set_error_status($id) {
  * Run sync operation
  */
 function drupal_sync_run_sync() {
-  $queue_entities = drupal_sync_get_from_queue();
-  foreach ($queue_entities as $queue_entity) {
-    $entity = unserialize($queue_entity['entity']);
+  if (lock_acquire('drupal_sync_run_sync', 60)) {
+    $queue_entities = drupal_sync_get_from_queue();
+    foreach ($queue_entities as $queue_entity) {
+      $entity = unserialize($queue_entity['entity']);
 
-    // send entity
-    $responce = drupal_sync_xmlrpc_sync_entity($queue_entity['remote_site_id'], $queue_entity['entity_type'], $entity, $queue_entity['operation']);
+      // send entity
+      $responce = drupal_sync_xmlrpc_sync_entity($queue_entity['remote_site_id'], $queue_entity['entity_type'], $entity, $queue_entity['operation']);
 
-    if ($responce && !empty($responce['status']) && $responce['status'] == 'ok') {
-      $remote_eid = $responce['id'];
-      switch ($queue_entity['operation']) {
-        case 'insert':
-          drupal_sync_local_store_insert($queue_entity['entity_id'], $remote_eid, $queue_entity['entity_type'], $queue_entity['remote_site_id'], $entity);
-          break;
-        case 'update':
-          drupal_sync_local_store_update($queue_entity['entity_id'], $remote_eid, $queue_entity['entity_type'], $queue_entity['remote_site_id'], $entity);
-          break;
+      if ($responce && !empty($responce['status']) && $responce['status'] == 'ok') {
+        $remote_eid = $responce['id'];
+        switch ($queue_entity['operation']) {
+          case 'insert':
+            drupal_sync_local_store_insert($queue_entity['entity_id'], $remote_eid, $queue_entity['entity_type'], $queue_entity['remote_site_id'], $entity);
+            break;
+          case 'update':
+            drupal_sync_local_store_update($queue_entity['entity_id'], $remote_eid, $queue_entity['entity_type'], $queue_entity['remote_site_id'], $entity);
+            break;
+        }
+
+        drupal_sync_delete_from_queue($queue_entity['id']);
       }
+      else {
+        //if status == error
+        $error_info = array(
+          'message' => !empty($responce) ? t('Error synchronize entity') : t('Error sending synchronize xmlrpc request (empty responce)'),
+          'sync_id' => $queue_entity['id'],
+          'Remote site name' => $queue_entity['remote_site_id'],
+        );
 
-      drupal_sync_delete_from_queue($queue_entity['id']);
+        drupal_sync_queue_set_error_status($queue_entity['id']);
+
+        module_invoke_all('drupal_sync_error_notification', 'synchronization_error', $error_info);
+
+        $error_info['remote_error_info'] = !empty($responce['error_info']) ? $responce['error_info'] : '';
+        watchdog('sync_error', '<pre>' . print_r($error_info, TRUE) . '</pre>');
+      }
     }
-    else {
-      //if status == error
-      $error_info = array(
-        'message' => !empty($responce) ? t('Error syncronize entity') : t('Error sending syncronize xmlrpc request (empty responce)'),
-        'sync_id' => $queue_entity['id'],
-        'Remote site name' => $queue_entity['remote_site_id'],
-      );
-
-      drupal_sync_queue_set_error_status($queue_entity['id']);
-
-      module_invoke_all('drupal_sync_error_notification', 'synchronization_error', $error_info);
-
-      $error_info['remote_error_info'] = !empty($responce['error_info']) ? $responce['error_info'] : '';
-      watchdog('sync_error', '<pre>' . print_r($error_info, TRUE) . '</pre>');
-    }
+    lock_release('drupal_sync_run_sync');
+  }
+  else {
+    watchdog('drupal_sync', 'An attempt to run a "drupal_sync_run_sync" function that is already running.');
   }
 }
 

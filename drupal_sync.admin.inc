@@ -406,9 +406,12 @@ function drupal_sync_domain_remove_one($form, &$form_state) {
 function drupal_sync_admin_settings_form_validate($form, &$form_state) {
   $url_values = array();
   $name_values = array();
-  for ($i = 0; isset($form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$i]); $i++) {
-    $url_values[$i] = $form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$i]['drupal_sync_remote_url'];
-    $name_values[$i] = $form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$i]['drupal_sync_remote_name'];
+
+  foreach ($form_state['values']['drupal_sync_settings']['drupal_sync_remote'] as $key => $value) {
+    if (is_numeric($key)) {
+      $url_values[$key] = $value['drupal_sync_remote_url'];
+      $name_values[$key] = $value['drupal_sync_remote_name'];
+    }
   }
 
   //check url duplicates
@@ -422,7 +425,7 @@ function drupal_sync_admin_settings_form_validate($form, &$form_state) {
     }
   }
 
-  //check alowed name simbols
+  //check allowed name symbols
   foreach ($name_values as $i => $value) {
     if (preg_match('@[^a-z0-9_]@', $value)) {
       form_set_error('drupal_sync_settings][drupal_sync_remote][' . $i . '][drupal_sync_remote_name', t('The machine-readable name must contain only lowercase letters, numbers, and underscores.'));
@@ -491,4 +494,78 @@ function drupal_sync_admin_settings_form_submit($form, &$form_state) {
   // clear menu cache
   menu_cache_clear_all();
   drupal_set_message(t('The settings are saved.'), 'status');
+}
+
+/**
+ * Drupal sync backup/restore functionality
+ *
+ * @return string
+ */
+function drupal_sync_settings_backup() {
+  $action = arg(5);
+  $domain_name = str_replace('www.', '', $_SERVER['HTTP_HOST']);
+  $domain_name = str_replace(array('.', '-'), array('_', '_'), $domain_name);
+  if(!drupal_realpath('private://')) {
+    drupal_set_message(t('Please, set up Private file system path !link', array('!link' => l('here', 'admin/config/media/file-system'))), 'error');
+    return '';
+  }
+
+  $filedir = 'private://drupal_sync';
+  file_prepare_directory($filedir, FILE_CREATE_DIRECTORY);
+
+  $file_real_name = drupal_realpath($filedir) . "/" . $domain_name . ".dat";;
+
+  if (!file_exists($file_real_name)) {
+    $fh = fopen($file_real_name, "x+");
+    fclose($fh);
+    chmod($file_real_name, 0440);
+  }
+
+  if ($action == 'restore') {
+    $data = file_get_contents($file_real_name);
+    $data = unserialize($data);
+    if (isset($data['settings']) && isset($data['relations'])) {
+      variable_set('drupal_sync_settings', $data['settings']);
+      variable_set('drupal_sync_remote_relation_settings', $data['relations']);
+      drupal_set_message(t("Drupal sync settings have been restored"));
+    }
+    else {
+      drupal_set_message(t("Error! Drupal sync settings have not been restored. Wrong format of backup file!"), 'error');
+    }
+    drupal_goto("admin/config/drupal_sync/settings/backup");
+  }
+  elseif ($action == 'backup') {
+    $data = array(
+      'settings' => variable_get('drupal_sync_settings', array()),
+      'relations' => variable_get('drupal_sync_remote_relation_settings', array())
+    );
+
+    $apache_user = posix_getpwuid(posix_geteuid());
+    $file_owner = posix_getpwuid(fileowner($file_real_name));
+
+    if ($apache_user != $file_owner) {
+      drupal_set_message(t("Drupal sync settings have not been saved.") . " <br>" . t("Check backup file owner permissions!"), 'error');
+      drupal_goto("admin/config/drupal_sync/settings/backup");
+    }
+
+    $perms = chmod($file_real_name, 0774);
+
+    if ($perms) {
+      $result = file_put_contents($file_real_name, serialize($data));
+      chmod($file_real_name, 0440);
+      drupal_set_message(t('Drupal sync settings have been saved'));
+    }
+    else {
+      $result = file_put_contents($file_real_name, serialize($data));
+      chmod($file_real_name, 0440);
+      drupal_set_message(t('Drupal sync settings have not been saved. Check backup file permissions!'), 'error');
+    }
+    drupal_goto("admin/config/drupal_sync/settings/backup");
+  }
+
+
+  $content = l("[ " . t("Create backup") . " ]", "admin/config/drupal_sync/settings/backup/backup") . "<br><br>" .
+      l("[ " . t("Restore backup") . " ]", "admin/config/drupal_sync/settings/backup/restore");
+
+  return $content;
 }

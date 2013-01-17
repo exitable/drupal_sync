@@ -5,9 +5,6 @@
  * Drupal Sync additional module.
  */
 
-// added for using constants ans functions from install file.
-module_load_include('install', 'drupal_sync_additional_taxonomy_rules', 'drupal_sync_additional_taxonomy_rules');
-
 /**
  * Implements hook_menu().
  */
@@ -92,8 +89,11 @@ function drupal_sync_additional_taxonomy_rules_form_alter(&$form, &$form_state, 
  */
 function drupal_sync_additional_taxonomy_rules_drupal_sync_admin_settings_form_validate($form, $form_state) {
   $term_tid_values = array();
-  for ($i = 0; isset($form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$i]); $i++) {
-    $term_tid_values[$i] = $form_state['values']['drupal_sync_settings']['drupal_sync_remote'][$i]['term_tid'];
+
+  foreach ($form_state['values']['drupal_sync_settings']['drupal_sync_remote'] as $key => $value) {
+    if (is_numeric($key)) {
+      $term_tid_values[$key] = $value['term_tid'];
+    }
   }
 
   //check term_tid_values duplicates
@@ -101,7 +101,7 @@ function drupal_sync_additional_taxonomy_rules_drupal_sync_admin_settings_form_v
   if (!empty($term_tid_duplicate_values)) {
     //search term_tid_values duplicates
     foreach ($term_tid_values as $i => $value) {
-      if (in_array($value, $term_tid_duplicate_values)) {
+      if (in_array($value, $term_tid_duplicate_values) && $value != 0) {
         form_set_error('drupal_sync_settings][drupal_sync_remote][' . $i . '][term_tid', 'Error, term for sync must be unique for each site');
       }
     }
@@ -115,8 +115,7 @@ function drupal_sync_additional_taxonomy_rules_drupal_sync_admin_settings_form_v
  */
 function drupal_sync_additional_taxonomy_rules_get_node_type_taxonomy_field_name() {
   $data = variable_get('drupal_sync_additional_taxonomy_rules_manage_content_type_vocabulary', array(0 => 0));
-  $vid = $data[key($data)];
-  $node_type = key($data);
+  list($node_type, $vid) = each($data);
   $voc = taxonomy_vocabulary_load($vid);
 
   $properties = entity_get_property_info('node');
@@ -173,7 +172,7 @@ function drupal_sync_additional_taxonomy_rules_drupal_sync_add_to_queue_alter($e
       if (!in_array($send_to_tid, $local_tids)) {
 
         if (in_array($send_to_tid, $previous_local_tids)) {
-          // if site not choosed in node term refferense, but was chosen before node update, change op to delete for this site
+          // if site not choosed in node term referense, but was chosen before node update, change op to delete for this site
           $op = 'delete';
 
           //delete not sended other operations in queue for this remote site if exist

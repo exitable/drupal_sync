@@ -7,7 +7,7 @@
  */
 
 /**
- * Add sinc settings form fields to entity edit form
+ * Add sync settings form fields to entity edit form
  *
  * @param array $form
  * @param array $form_state
