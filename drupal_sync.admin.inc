@@ -35,6 +35,15 @@ function drupal_sync_drupal_sync_default_fields_info($fields) {
     'title' => array(
       'label' => t('Title'),
     ),
+    'status' => array(
+      'label' => t('Published'),
+    ),
+    'promote' => array(
+      'label' => t('Promoted to front page'),
+    ),
+    'comment' => array(
+      'label' => t('Comments on/off'),
+    ),
   );
 
   $fields['taxonomy_term'] = array(
@@ -502,7 +511,7 @@ function drupal_sync_settings_backup() {
   $domain_name = str_replace('www.', '', $_SERVER['HTTP_HOST']);
   $domain_name = str_replace(array('.', '-'), array('_', '_'), $domain_name);
   if (!drupal_realpath('private://')) {
-    drupal_set_message(t('Please, set up Private file system path !link', array('!link' => l('here', 'admin/config/media/file-system'))), 'error');
+    drupal_set_message(t('Please, set up Private file system path !link', array('!link' => l(t('here'), 'admin/config/media/file-system'))), 'error');
     return '';
   }
 
@@ -536,14 +545,16 @@ function drupal_sync_settings_backup() {
       'relations' => variable_get('drupal_sync_remote_relation_settings', array())
     );
 
-    $apache_user = posix_getpwuid(posix_geteuid());
-    $file_owner = posix_getpwuid(fileowner($file_real_name));
+    if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+      $apache_user = posix_getpwuid(posix_geteuid());
+      $file_owner = posix_getpwuid(fileowner($file_real_name));
 
-    if ($apache_user != $file_owner) {
-      drupal_set_message(t("Drupal sync settings have not been saved.") . " <br>" . t("Check backup file owner permissions!"), 'error');
-      drupal_goto("admin/config/drupal_sync/settings/backup");
+      if ($apache_user != $file_owner) {
+        drupal_set_message(t("Drupal sync settings have not been saved.") . " <br>" . t("Check backup file owner permissions!"), 'error');
+        drupal_goto("admin/config/drupal_sync/settings/backup");
+      }
     }
-
+    
     $perms = chmod($file_real_name, 0774);
 
     if ($perms) {

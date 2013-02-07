@@ -146,10 +146,6 @@ function drupal_sync_entity_node_insert($entity, $remote_site_name) {
 
   drupal_sync_entity_add_fields($node, $entity, 'node');
 
-  $node->status = 1; //(1 or 0): published or not
-  $node->promote = 0; //(1 or 0): promoted to front page
-  $node->comment = 1; //2 = comments on, 1 = comments off
-
   drupal_alter('drupal_sync_entity_node_insert', $entity, $node, $remote_site_name);
 
   try {
@@ -339,11 +335,56 @@ function drupal_sync_entity_term_delete($entity, $remote_url) {
 function drupal_sync_entity_add_fields(&$entity_local, $entity_remote, $entity_type) {
 
   $properties = drupal_sync_get_entity_bundle_properties($entity_type, $entity_remote['entity_content_type']);
-
   $types = array();
   $types = module_invoke_all('drupal_sync_entity_field_types_info', $types);
   foreach ($entity_remote['entity_fields'] as $field_key => $values) {
-    if ($entity_type == 'taxonomy_term' && $field_key == 'parent') {
+    $local_field_type = (isset($properties[$field_key]['type'])) ? $properties[$field_key]['type'] : '';
+
+    if (empty($local_field_type)) {
+      $field_info = field_info_field($field_key);
+      $local_field_type = (isset($field_info['type'])) ? $field_info['type'] : '';
+    }
+
+    $new_field_value = NULL;
+    foreach (module_implements('drupal_sync_entity_add_field') as $module) {
+      $new_field_value = module_invoke($module, 'drupal_sync_entity_add_field', $field_key, $values, $local_field_type,  $entity_local, $entity_remote, $entity_type);
+    }
+
+    if (isset($new_field_value)) {
+      //if entity field value provided in hook "drupal_sync_entity_add_field" implementation
+      $entity_local->$field_key = $new_field_value;
+    }
+    elseif (!is_array($values)) {
+      //if it's not array, just set value, for example node Titles
+      $entity_local->$field_key = $values;
+    }
+    else {
+      //default field values setting
+      if (!empty($local_field_type)) {
+        $sync_field_fields = (isset($types[$local_field_type])) ? $types[$local_field_type] : array('value');
+        $local_field_values = (isset($values)) ? $values : array();
+        $field_value = array();
+        foreach ($local_field_values as $local_field_key => $local_field_value) {
+          drupal_alter('drupal_sync_entity_fields_values', $local_field_value, $entity_remote, $entity_type);
+          if (!empty($local_field_value)) {
+              foreach ($sync_field_fields as $sync_field_field) {
+                $field_value[LANGUAGE_NONE][$local_field_key][$sync_field_field] = array_shift($local_field_value);
+              }
+          }
+        }
+        $entity_local->$field_key = $field_value;
+      }
+    }
+  }
+  
+}
+
+/**
+ * Implements hook_drupal_sync_entity_add_field().
+ */
+function drupal_sync_drupal_sync_entity_add_field($field_key, $values, $local_field_type, $entity_local, $entity_remote, $entity_type) {
+
+   if ($entity_type == 'taxonomy_term' && $field_key == 'parent') {
       //provides values for taxonomy_term relations, find local tids for remote taxonomy tids
       $field_value = array();
       foreach ($values as $value) {
@@ -362,31 +403,23 @@ function drupal_sync_entity_add_fields(&$entity_local, $entity_remote, $entity_t
         }
       }
       //if we cant find parent tid, setup root parent array(0 => 0)
-      $entity_local->$field_key = !empty($field_value) ? $field_value : array(0 => 0);
+      return !empty($field_value) ? $field_value : array(0 => 0);
     }
-    elseif (!is_array($values)) {
-      //if it's not array, just set value, for example node Titles
-      $entity_local->$field_key = $values;
-    }
-    else {
-      //default field values setting
-      $local_field_type = (isset($properties[$field_key]['type'])) ? $properties[$field_key]['type'] : NULL;
-      if (!empty($local_field_type)) {
-        $sync_field_fields = (isset($types[$local_field_type])) ? $types[$local_field_type] : array('value');
-        $local_field_values = (isset($values)) ? $values : array();
-        $field_value = array();
-        foreach ($local_field_values as $local_field_key => $local_field_value) {
-          drupal_alter('drupal_sync_entity_fields_values', $local_field_value, $entity_remote, $entity_type);
-          if (!empty($local_field_value)) {
-            foreach ($sync_field_fields as $sync_field_field) {
-              $field_value[LANGUAGE_NONE][$local_field_key][$sync_field_field] = array_shift($local_field_value);
-            }
+    if ($local_field_type == 'list<node>' || $local_field_type == 'node' ) {
+      //provides values for node relations, find local ids' for remote node references
+      $field_value = array();
+      foreach ($values as $value) {
+       if (isset($value['target_id']) && is_numeric($value['target_id'])) {
+            if (isset($value['source_site_id'])) {
+              $local_id = drupal_sync_local_store_get_id_by_source($value['target_id'], $value['source_site_id'], 'node');
+              if (!empty($local_id)) {
+                $field_value[$local_id] = $local_id;
+                $field_value[] = array('target_id' => $local_id);
+              }
           }
         }
-        $entity_local->$field_key = $field_value;
       }
     }
-  }
 }
 
 /**
@@ -399,7 +432,7 @@ function drupal_sync_entity_add_fields(&$entity_local, $entity_remote, $entity_t
 function drupal_sync_drupal_sync_entity_fields_values_alter(&$values, $entity_remote, $entity_type) {
   //Check file fields and download external files, and save as managed file
   if (!empty($values['file_url'])) {
-    $local_file = drupal_sync_upload_remote_file($values['file_url']);
+    $local_file = drupal_sync_upload_remote_file($values['file_url'], $entity_remote, $entity_type);
     if (!empty($local_file->fid)) {
       unset($values['file_url']);
       $values['fid'] = $local_file->fid;
@@ -725,7 +758,7 @@ function _drupal_sync_get_fields_refs($entity_type, $entity_type_id, $site_url) 
  * @return obj
  *   Return drupal file object
  */
-function drupal_sync_upload_remote_file($url) {
+function drupal_sync_upload_remote_file($url, $entity_remote, $entity_type) {
   global $user;
   $temp = file_directory_temp();
   $basename = basename($url);
@@ -734,7 +767,14 @@ function drupal_sync_upload_remote_file($url) {
   $result = copy($url, $temp_path);
 
   if (!$result) {
-    watchdog('drupal_sync_error', 'Error copy remote file to temporary directory');
+    $message = 'Error copy remote file to temporary directory';
+    watchdog('drupal_sync_error', $message);
+    $message .= '</br> Site: ' . $_SERVER['HTTP_HOST'];
+    $message .= '</br> Remote file URL: ' . $url;
+    $message .= '</br> Entity: ' . $entity_type;
+    $message .= '</br> EntityType: ' . $entity_remote['entity_content_type'];
+    $message .= '</br> EntityId: ' . $entity_remote['entity_id'];
+    drupal_sync_send_email_notification($message);
     return FALSE;
   }
   $file = (object) array(
@@ -752,7 +792,14 @@ function drupal_sync_upload_remote_file($url) {
     $file = file_save($file);
   }
   else {
-    watchdog('drupal_sync_error', 'Failed to write the uploaded file to the site\'s public file folder.');
+    $message = 'Failed to write the uploaded file to the site\'s public file folder';
+    watchdog('drupal_sync_error', $message);
+    $message .= '</br> Site: ' . $_SERVER['HTTP_HOST'];
+    $message .= '</br> Remote file URL: ' . $url;
+    $message .= '</br> Entity: ' . $entity_type;
+    $message .= '</br> EntityType: ' . $entity_remote['entity_content_type'];
+    $message .= '</br> EntityId: ' . $entity_remote['entity_id'];
+    drupal_sync_send_email_notification($message);
     return FALSE;
   }
 

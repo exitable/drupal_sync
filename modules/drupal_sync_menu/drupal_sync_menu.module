@@ -27,10 +27,7 @@ function drupal_sync_menu_menu() {
  *  Implements hook_init().
  */
 function drupal_sync_menu_init() {
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.forms');
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.api');
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.queue');
-  module_load_include('module', 'drupal_sync', 'drupal_sync');
+  drupal_sync_menu_include_core_files();
 }
 
 /**************************************************
@@ -57,6 +54,9 @@ function drupal_sync_menu_drupal_sync_default_fields_info($fields) {
     ),
     'weight' => array(
       'label' => t('Weight'),
+    ),
+    'hidden' => array(
+      'label' => t('Enabled'),
     ),
   );
 
@@ -115,11 +115,11 @@ function drupal_sync_menu_drupal_sync_types_build_form_alter(&$form, $types, $de
  *
  * @param array $field
  * @param string $field_name
- * @param string $type
+ * @param string $context
  */
-function drupal_sync_menu_drupal_sync_field_to_send_alter(&$field, $field_name, $type) {
+function drupal_sync_menu_drupal_sync_field_to_send_alter(&$field, $field_name, $context) {
 
-  if ($type == 'menu_item' && $field_name == 'parent') {
+  if ($context['entity_type'] == 'menu_item' && $field_name == 'parent') {
     //if this parent mlid from remote site, change mlid on remote sorce mlid and add site source id
     $new_field = array();
     if (is_string($field)) {
@@ -128,7 +128,7 @@ function drupal_sync_menu_drupal_sync_field_to_send_alter(&$field, $field_name, 
         $menu_name = $parent_array[0];
         $link_local_mlid = $parent_array[1];
         if (is_numeric($link_local_mlid)) {
-          $link_source_info = drupal_sync_get_local_store_info($link_local_mlid, $type);
+          $link_source_info = drupal_sync_get_local_store_info($link_local_mlid, $context['entity_type']);
 
           if (!empty($link_source_info)) {
             $new_field = array(
@@ -140,11 +140,11 @@ function drupal_sync_menu_drupal_sync_field_to_send_alter(&$field, $field_name, 
         }
       }
     }
-    watchdog('sync_menu_new_parent_field', '<pre>' . print_r($new_field, TRUE) . '</pre>');
+
     $field = $new_field;
   }
 
-  if ($type == 'menu_item' && $field_name == 'link_path') {
+  if ($context['entity_type'] == 'menu_item' && $field_name == 'link_path') {
     //if this parent mlid from remote site, change mlid on sorce mlid and add site source id
     $new_field = array();
     if (is_string($field)) {
@@ -215,14 +215,14 @@ function drupal_sync_menu_drupal_sync_get_entity_id_alter(&$type_id, $entity_typ
 /**
  * Implements of hook_drupal_sync_get_sync_types().
  */
-function drupal_sync_menu_drupal_sync_get_sync_types($types) {
+function drupal_sync_menu_drupal_sync_get_sync_types() {
   $drupal_sync_settings = variable_get('drupal_sync_settings', array());
-  $types = (isset($drupal_sync_settings['drupal_sync_entities'])) ? $drupal_sync_settings['drupal_sync_entities'] : array();
-
+  $types_info = (isset($drupal_sync_settings['drupal_sync_entities'])) ? $drupal_sync_settings['drupal_sync_entities'] : array();
+  $types = array();
   $fields = array();
   $fields = module_invoke_all('drupal_sync_default_fields_info', $fields);
 
-  foreach ($types as $type => $entity) {
+  foreach ($types_info as $type => $entity) {
     switch ($type) {
       case 'menu_item':
         foreach ($entity as $key => $value) {
@@ -251,7 +251,7 @@ function drupal_sync_menu_drupal_sync_entity_prepare_to_queue($entities_settings
   if ($type == 'menu_item') {
     // check if $menu_link['menu_name'] in settings
     if (isset($entities_settings[$type][$menu_link['menu_name']])) {
-      watchdog('sync_menu_push_to_queue', '<pre>' . print_r($menu_link, TRUE) . '</pre>');
+
       // send menu_links to remote sites
       drupal_sync_add_to_queue($menu_link['mlid'], $type, (array) $menu_link, $menu_link['menu_name'], $op, $source_changed);
     }
@@ -316,6 +316,7 @@ function drupal_sync_menu_drupal_sync_manager_entity_edit_link($entity_type, $en
  * Implements hook_menu_link_insert().
  */
 function drupal_sync_menu_menu_link_insert($menu_link) {
+  drupal_sync_menu_include_core_files();
   drupal_sync_entity_prepare_to_queue($menu_link, 'menu_item', 'insert');
 }
 
@@ -323,6 +324,7 @@ function drupal_sync_menu_menu_link_insert($menu_link) {
  * Implements hook_menu_link_update().
  */
 function drupal_sync_menu_menu_link_update($menu_link) {
+  drupal_sync_menu_include_core_files();
   drupal_sync_entity_prepare_to_queue($menu_link, 'menu_item', 'update');
 }
 
@@ -330,6 +332,7 @@ function drupal_sync_menu_menu_link_update($menu_link) {
  * Implements hook_menu_link_delete().
  */
 function drupal_sync_menu_menu_link_delete($menu_link) {
+  drupal_sync_menu_include_core_files();
   drupal_sync_entity_prepare_to_queue($menu_link, 'menu_item', 'delete');
 }
 
@@ -352,7 +355,7 @@ function drupal_sync_menu_menu_item_insert($entity, $remote_site_name) {
   if (!empty($result['status']) && $result['status'] == 'error') {
     return $result;
   }
-  watchdog('sync_menu_item_insert', '<pre>' . print_r($link, TRUE) . '</pre>');
+
   try {
     $mlid = menu_link_save($link);
   } catch (Exception $e) {
@@ -392,7 +395,7 @@ function drupal_sync_menu_menu_item_update($entity, $remote_site_name) {
     return $result;
   }
 
-  watchdog('sync_menu_item_update', '<pre>' . print_r($link, TRUE) . '</pre>');
+
   try {
     $mlid = menu_link_save($link);
   } catch (Exception $e) {
@@ -496,4 +499,16 @@ function drupal_sync_menu_add_link_fields(&$link, $entity, $remote_site_name) {
         break;
     }
   }
+}
+
+/**
+ * Include files from main drupal_sync module
+ */
+function drupal_sync_menu_include_core_files() {
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.forms');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.api');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.queue');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.entity');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.xmlrpc');
+  module_load_include('module', 'drupal_sync', 'drupal_sync');
 }

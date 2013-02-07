@@ -64,3 +64,7 @@ function hook_drupal_sync_processings_incoming_operation_before($op_result, $ent
 function hook_drupal_sync_processings_incoming_operation_after($op_result, $entity, $context) {
 
 }
+
+function hook_drupal_sync_entity_add_field($field_key, $values, $local_field_type, $entity_local, $entity_remote, $entity_type) {
+  
+}

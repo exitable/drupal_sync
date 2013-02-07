@@ -6,6 +6,13 @@
  */
 define('DRUPAL_SYNC_MAX_ERRORS', 3);
 
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.api');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.xmlrpc');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.entity');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.queue');
+  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.forms');
+  module_load_include('inc', 'drupal_sync', 'drupal_sync.admin');
+
 /**
  * Implements hook_menu().
  */
@@ -132,13 +139,6 @@ function drupal_sync_cron() {
  * Implements hook_init().
  */
 function drupal_sync_init() {
-
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.api');
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.xmlrpc');
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.entity');
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.queue');
-  module_load_include('inc', 'drupal_sync', 'includes/drupal_sync.forms');
-  module_load_include('inc', 'drupal_sync', 'drupal_sync.admin');
 
   if (!drupal_sync_check_site_domain()) {
     $message = t('Drupal sync settings is wrong. Check settings and site domain !link.', array('!link' => l(t("here"), 'admin/config/drupal_sync/settings')));

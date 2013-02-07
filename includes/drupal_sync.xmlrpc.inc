@@ -163,7 +163,7 @@ function drupal_sync_xmlrpc_sync($type = 'node', $entity = array(), $op = 'inser
 function drupal_sync_xmlrpc_get_sync_types() {
   $types = array();
   if (user_access('access drupal sync')) {
-    $types = module_invoke_all('drupal_sync_get_sync_types', $types);
+    $types = module_invoke_all('drupal_sync_get_sync_types');
   }
   return $types;
 }
@@ -382,14 +382,14 @@ function drupal_sync_get_remote_site_access_by_name($remote_site_name) {
 /**
  * Implements of hook_drupal_sync_get_sync_types().
  */
-function drupal_sync_drupal_sync_get_sync_types($types) {
+function drupal_sync_drupal_sync_get_sync_types() {
   $drupal_sync_settings = variable_get('drupal_sync_settings', array());
-  $types = (isset($drupal_sync_settings['drupal_sync_entities'])) ? $drupal_sync_settings['drupal_sync_entities'] : array();
-
+  $types_info = (isset($drupal_sync_settings['drupal_sync_entities'])) ? $drupal_sync_settings['drupal_sync_entities'] : array();
+  $types = array();
   $fields = array();
   $fields = module_invoke_all('drupal_sync_default_fields_info', $fields);
 
-  foreach ($types as $type => $entity) {
+  foreach ($types_info as $type => $entity) {
     switch ($type) {
       case 'node':
         foreach ($entity as $key => $value) {

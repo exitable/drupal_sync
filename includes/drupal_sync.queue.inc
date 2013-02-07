@@ -9,20 +9,32 @@
  * Implements hook_drupal_sync_entity_field_types_info().
  */
 function drupal_sync_drupal_sync_entity_field_types_info($types = array()) {
-  $types['text_formatted'] = array('value', 'format');
+  $types['text_formatted'] = array('value', 'format', 'summary');
+  $types['list<text_formatted>'] = array('value', 'format', 'summary');
   $types['date'] = array('value', 'value2', 'offset', 'offset2', 'timezone', 'show_todate', 'date_type', 'timezone_db');
+  $types['list<date>'] = array('value', 'value2', 'offset', 'offset2', 'timezone', 'show_todate', 'date_type', 'timezone_db');
   $types['field_item_link'] = array('url', 'title');
+  $types['list<field_item_link>'] = array('url', 'title');
   $types['field_item_image'] = array('fid', 'alt', 'title', 'description');
-  $types['list<text>'] = array('value');
-  $types['list<decimal>'] = array('value');
-  $types['list<taxonomy_term>'] = array('tid');
-  $types['taxonomy_term'] = array('tid');
-  $types['integer'] = array('value');
-  $types['boolean'] = array('value');
-  $types['decimal'] = array('value');
+  $types['list<field_item_image>'] = array('fid', 'alt', 'title', 'description');
   $types['text'] = array('value');
+  $types['list<text>'] = array('value');
+  $types['node'] = array('target_id');
+  $types['list<node>'] = array('target_id');
+  $types['decimal'] = array('value');
+  $types['list<decimal>'] = array('value');
+  $types['taxonomy_term'] = array('tid');
+  $types['list<taxonomy_term>'] = array('tid');
+  $types['integer'] = array('value');
+  $types['list<integer>'] = array('value');
+  $types['tablefield'] = array('tablefield', 'value');//array('value', 'format', 'tabledata');
+  $types['list<tablefield>'] = array('value', 'format', 'tabledata');
+  $types['boolean'] = array('value');
+  $types['list<boolean>'] = array('value');
   $types['field_item_file'] = array('fid', 'display', 'description');
+  $types['list<field_item_file>'] = array('fid', 'display', 'description');
   $types['struct'] = array('value', 'value2', 'offset', 'offset2', 'timezone', 'show_todate', 'date_type', 'timezone_db', 'rrule');
+  $types['list<struct>'] = array('value', 'value2', 'offset', 'offset2', 'timezone', 'show_todate', 'date_type', 'timezone_db', 'rrule');
 
   return $types;
 }
@@ -48,34 +60,7 @@ function drupal_sync_add_to_queue($local_eid, $type, $entity, $entity_type_id, $
     return NULL;
   }
 
-  $properties = drupal_sync_get_entity_bundle_properties($type, $entity_type_id);
-
-  $types = array();
-  $types = module_invoke_all('drupal_sync_entity_field_types_info', $types);
-
-  $opt = array();
-
-  foreach ($ref as $local_field => $remote_field) {
-    $opt[$remote_field] = array();
-    $local_field_type = (isset($properties[$local_field]['type'])) ? $properties[$local_field]['type'] : NULL;
-
-    if (!empty($local_field_type)) {
-      $sync_field_fields = (isset($types[$local_field_type])) ? $types[$local_field_type] : array('value');
-      $local_field_values = (isset($entity[$local_field][LANGUAGE_NONE])) ? $entity[$local_field][LANGUAGE_NONE] : array();
-      foreach ($local_field_values as $local_field_key => $local_field_value) {
-        foreach ($sync_field_fields as $sync_field_field) {
-          if (isset($local_field_value[$sync_field_field])) {
-            $opt[$remote_field][$local_field_key][$sync_field_field] = $local_field_value[$sync_field_field];
-          }
-          drupal_alter('drupal_sync_field_values_to_send', $opt[$remote_field][$local_field_key]);
-        }
-      }
-    }
-    else {
-      $opt[$remote_field] = (isset($entity[$local_field])) ? $entity[$local_field] : ''; // for titles
-    }
-    drupal_alter('drupal_sync_field_to_send', $opt[$remote_field], $remote_field, $type);
-  }
+  $opt = drupal_sync_get_entity_fields_for_sending($type, $entity_type_id, $entity, $ref);
 
   if (!empty($entity['drupal_sync_is_remote'])) {
     //if this entity is coming from remote site
@@ -132,15 +117,69 @@ function drupal_sync_add_to_queue($local_eid, $type, $entity, $entity_type_id, $
 }
 
 /**
+ * Return remote entity fields, prepared to sending to remote site
+ *
+ * @param string $type
+ *   Entity type (node, taxonomy_term)
+ * @param string $entity_type_id
+ *   Type of entity example (for nodes it's content type name)
+ * @param array $entity
+ * @param array $ref
+ *   Fields mapping
+ *
+ * @return array
+ *   fields array
+ */
+function drupal_sync_get_entity_fields_for_sending($type, $entity_type_id, $entity, $ref) {
+  $properties = drupal_sync_get_entity_bundle_properties($type, $entity_type_id);
+  $types = array();
+  $types = module_invoke_all('drupal_sync_entity_field_types_info', $types);
+
+  $opt = array();
+
+  foreach ($ref as $local_field => $remote_field) {
+    if (!empty($remote_field)) {
+      $opt[$remote_field] = array();
+      $local_field_type = (isset($properties[$local_field]['type'])) ? $properties[$local_field]['type'] : NULL;
+
+      if (empty($local_field_type)) {
+        $field_info = field_info_field($local_field);
+        $local_field_type = (isset($field_info['type'])) ? $field_info['type'] : NULL;
+      }
+
+      if (!empty($local_field_type)) {
+        $sync_field_fields = (isset($types[$local_field_type])) ? $types[$local_field_type] : array('value');
+        $local_field_values = (isset($entity[$local_field][LANGUAGE_NONE])) ? $entity[$local_field][LANGUAGE_NONE] : array();
+        foreach ($local_field_values as $local_field_key => $local_field_value) {
+          foreach ($sync_field_fields as $sync_field_field) {
+            if (isset($local_field_value[$sync_field_field])) {
+              $opt[$remote_field][$local_field_key][$sync_field_field] = $local_field_value[$sync_field_field];
+            }
+          }
+          drupal_alter('drupal_sync_field_values_to_send', $opt[$remote_field][$local_field_key]);
+        }
+      }
+      else {
+        $opt[$remote_field] = (isset($entity[$local_field])) ? $entity[$local_field] : ''; // for titles
+      }
+      $alter_context = array('entity_type' => $type, 'local_field_type' => $local_field_type, 'entity' => $entity);
+      drupal_alter('drupal_sync_field_to_send', $opt[$remote_field], $remote_field, $alter_context);
+    }
+  }
+
+  return $opt;
+}
+
+/**
  * Implements hook_drupal_sync_field_to_send_alter().
  *
  * @param array $field
  * @param string $field_name
  * @param string $type
  */
-function drupal_sync_drupal_sync_field_to_send_alter(&$field, $field_name, $type) {
+function drupal_sync_drupal_sync_field_to_send_alter(&$field, $field_name, $context) {
 
-  if ($type == 'taxonomy_term' && $field_name == 'parent') {
+  if ($context['entity_type'] == 'taxonomy_term' && $field_name == 'parent') {
 
     $new_field = array();
     if (is_array($field)) {
@@ -153,7 +192,7 @@ function drupal_sync_drupal_sync_field_to_send_alter(&$field, $field_name, $type
         else {
           if (is_numeric($value)) {
             //if this term from remote site, change tid on remote sorce tid and add site source id
-            $tid_source_info = drupal_sync_get_local_store_info($value, $type);
+            $tid_source_info = drupal_sync_get_local_store_info($value, $context['entity_type']);
             if (!empty($tid_source_info)) {
               $new_field[] = array(
                 'tid' => $tid_source_info['source_eid'],
@@ -165,6 +204,21 @@ function drupal_sync_drupal_sync_field_to_send_alter(&$field, $field_name, $type
       }
     }
     $field = $new_field;
+  }
+  if ($context['local_field_type'] == 'list<node>' || $context['local_field_type'] == 'node') {
+    //for entity reference fields
+    if (!empty($field) && is_array($field)) {
+      $new_field = array();
+      foreach ($field as $delta => $value) {
+        $eid_source_info = drupal_sync_get_local_store_info($value['target_id'], $context['entity_type']);
+        if (!empty($eid_source_info)) {
+            $new_field[] = array(
+                'target_id' => $eid_source_info['source_eid'],
+                'source_site_id' => $eid_source_info['source_site_id'],
+              );
+        }
+      }
+    }
   }
 }
 
@@ -190,7 +244,7 @@ function drupal_sync_drupal_sync_field_values_to_send_alter(&$field) {
       $field['tid_site_source_url'] = $tid_source_info['source_site_id'];
     }
     else {
-      $field = array();
+      $field['tid_site_source_url'] = drupal_sync_make_site_id_hash();
     }
   }
 }
