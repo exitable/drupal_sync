@@ -1,0 +1,14 @@
+{
+	"name"       : "exitable/drupal_sync",
+	"description": "Provide synchronization entities before multiple sites",
+	"type"       : "drupal-module",
+	"authors"    : [
+		{
+			"name" : "Marlin Cremers",
+			"email": "marlin@exitable.nl"
+		}
+	],
+	"require"    : {
+
+	}
+}
