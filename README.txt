@@ -18,8 +18,9 @@ mapping on the remote site") )
 
 Settings
 -----------
-1) These actions should be taken on each website that participate in synchronization process.
-On the page of module settings it is needed :
+These actions should be taken on each website that participate in synchronization process.
+
+1) On the page of module settings it is needed :
 - to specify update frequency, number of entities to be updated per 1 request,
 - to choose entities available for synchronization (node types, taxonomy vocabularies) ,
 
