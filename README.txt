@@ -16,8 +16,8 @@ All synchronization settings can be indicated on one website and all the other
  remote websites will get them automatically (use checkbox "Set the same field
 mapping on the remote site") )
 
-## Settings
-
+Settings
+-----------
 1) These actions should be taken on each website that participate in synchronization process.
 On the page of module settings it is needed :
 - to specify update frequency, number of entities to be updated per 1 request,
